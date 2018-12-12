@@ -42,9 +42,21 @@ class GuidanceVectorFieldEllipse:
 
         #print("error", error)
 
-        #error = totalError
+        error = totalError
 
         return np.subtract(tangent, normal.dot(k*error))
+
+
+    def getDesiredVelocity(self, pos_xy):
+        normal = self.computeNormal(pos_xy)
+        tangent = self.computeTangent(normal)
+        totalError = self.computeError(pos_xy)
+
+        singleVectorFieldVector = self.createSingleVectorFieldVector(tangent, normal, totalError, 0.3)
+        
+        singleVectorFieldVector = singleVectorFieldVector.dot(1./LA.norm(singleVectorFieldVector))
+        return singleVectorFieldVector
+        
 
 
 def plotVectorField():
@@ -109,7 +121,7 @@ def plotVectorField():
     plt.show()
     
 
-plotVectorField()
+#plotVectorField()
 
 
 # pos = (5,0)

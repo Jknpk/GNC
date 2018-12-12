@@ -7,6 +7,7 @@ import formation_distance as form
 import quadlog
 import animation as ani
 
+from guidance_vector_field import GuidanceVectorFieldEllipse
 
 # Quadrotor number 1
 m = 1 # Kg
@@ -45,7 +46,7 @@ q2 = quad.quadrotor(2, m, l, J, CDl, CDr, kt, km, kw, \
 
 
 # Simulation parameters
-tf = 120
+tf = 200
 dt = 1e-2
 time = np.linspace(0, tf, tf/dt)
 it = 0
@@ -86,6 +87,12 @@ tilde_mu = 0e-2*np.array([1, 1])
 # Formation
 fc = form.formation_distance(2, 1, dtriang, mu, tilde_mu, Btriang, 5e-2, 5e-1)
 
+
+# Guidance vector field
+gvf = GuidanceVectorFieldEllipse(2.5,2.5,0,0) 
+
+
+
 for t in time:
 
     # Simulation
@@ -94,7 +101,7 @@ for t in time:
         q1.set_xyz_ned_lya(xyz_d_q1)
         q2.set_xyz_ned_lya(xyz_d_q2)
 
-    else:
+    elif t >= 45 and t < 46:
         X = np.append(q1.xyz[0:2], q2.xyz[0:2])
         V = np.append(q1.v_ned[0:2], q2.v_ned[0:2])
         U = fc.u_acc(X, V)
@@ -102,6 +109,16 @@ for t in time:
 
         q1.set_a_2D_alt_lya(U[0:2], q2.xyz[2])
         q2.set_a_2D_alt_lya(U[2:4], q1.xyz[2])
+
+    else:
+        dvelQ1 = gvf.getDesiredVelocity(q1.xyz)
+        dvelQ2 = gvf.getDesiredVelocity(q2.xyz)
+        q1.set_v_2D_alt_lya(dvelQ1, q2.xyz[2])
+        q2.set_v_2D_alt_lya(dvelQ2, q1.xyz[2])
+
+        # try to let them both follow a guidance vector field
+
+
 
         #q1.set_a_2D_alt_lya(np.array([0,0]), q2.xyz[2])
         #q2.set_a_2D_alt_lya(np.array([0,0]), q1.xyz[2])
