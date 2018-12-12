@@ -3,6 +3,7 @@ import matplotlib.pyplot as pl
 import numpy as np
 
 import quadrotor as quad
+import formation_distance as form
 import quadlog
 import animation as ani
 
@@ -70,13 +71,43 @@ xyz_d_q2 = np.array([0, 0, -6])
 q1.yaw_d = -np.pi/4
 q2.yaw_d = np.pi/4
 
+#### not sure from here:
+
+# Formation Control
+# Shape
+side = 5
+Btriang = np.array([[-1, 0],[0, -1]])
+dtriang = np.array([side, side, side])
+
+# Motion
+mu = 0e-2*np.array([1, 1])
+tilde_mu = 0e-2*np.array([1, 1])
+
+# Formation
+fc = form.formation_distance(2, 1, dtriang, mu, tilde_mu, Btriang, 5e-2, 5e-1)
+
 for t in time:
 
     # Simulation
-    q1.set_xyz_ned_lya(xyz_d_q1)
-    q1.step(dt)
 
-    q2.set_xyz_ned_lya(xyz_d_q2)
+    if t < 45:
+        q1.set_xyz_ned_lya(xyz_d_q1)
+        q2.set_xyz_ned_lya(xyz_d_q2)
+
+    else:
+        X = np.append(q1.xyz[0:2], q2.xyz[0:2])
+        V = np.append(q1.v_ned[0:2], q2.v_ned[0:2])
+        U = fc.u_acc(X, V)
+
+
+        q1.set_a_2D_alt_lya(U[0:2], q2.xyz[2])
+        q2.set_a_2D_alt_lya(U[2:4], q1.xyz[2])
+
+        #q1.set_a_2D_alt_lya(np.array([0,0]), q2.xyz[2])
+        #q2.set_a_2D_alt_lya(np.array([0,0]), q1.xyz[2])
+
+
+    q1.step(dt)
     q2.step(dt)
 
     # Animation
@@ -86,6 +117,8 @@ for t in time:
     	# Print outs during animation
 
     	#print q1.xyz
+
+            
 
         axis3d.cla()
         ani.draw3d(axis3d, q1.xyz, q1.Rot_bn(), quadcolor[0])
