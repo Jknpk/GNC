@@ -1,5 +1,6 @@
 from scipy import linalg as la
 import matplotlib.pyplot as pl
+import matplotlib.patches as pa
 import numpy as np
 
 import quadrotor as quad
@@ -61,7 +62,9 @@ quadcolor = ['k','b'] #Array for number of quads
 pl.close("all")
 pl.ion()
 fig = pl.figure(0)
-axis3d = fig.add_subplot(111, projection='3d')
+axis3d = fig.add_subplot(131, projection='3d')
+axis2d = fig.add_subplot(132)
+axis_gfv = fig.add_subplot(133)
 pl.figure(0)
 
 # Desired position and heading
@@ -89,9 +92,35 @@ fc = form.formation_distance(2, 1, dtriang, mu, tilde_mu, Btriang, 5e-2, 5e-1)
 
 
 # Guidance vector field
-gvf = GuidanceVectorFieldEllipse(2.5,2.5,0,0) 
+BOUNDARY = 50
+
+gvf = GuidanceVectorFieldEllipse(15,10,0,0,0.55) 
+axis_gfv = gvf.plotIt(axis_gfv, BOUNDARY)
+
+# Ellipse
+e1 = pa.Ellipse((gvf.x0, gvf.y0), gvf.a*2., gvf.b*2., linewidth=1, fill=False)
 
 
+CoM_x = np.array([])
+CoM_y = np.array([])
+
+
+ellips_x = np.array([]) 
+ellips_y = np.array([])
+
+
+
+
+N = 400
+x1 = np.linspace(-BOUNDARY, BOUNDARY, N, endpoint=True)
+y1 = np.linspace(-BOUNDARY, BOUNDARY, N, endpoint=True)
+for x in x1:
+    for y in y1:
+        if abs(gvf.computeError((x,y))) < 0.1:
+            ellips_x = np.concatenate([ellips_x, [x]])
+            ellips_y = np.concatenate([ellips_y, [y]])
+            
+arrows = gvf.plotIt(axis2d, BOUNDARY)
 
 for t in time:
 
@@ -111,10 +140,22 @@ for t in time:
         q2.set_a_2D_alt_lya(U[2:4], q1.xyz[2])
 
     else:
-        dvelQ1 = gvf.getDesiredVelocity(q1.xyz)
-        dvelQ2 = gvf.getDesiredVelocity(q2.xyz)
-        q1.set_v_2D_alt_lya(dvelQ1, q2.xyz[2])
-        q2.set_v_2D_alt_lya(dvelQ2, q1.xyz[2])
+        #calculate center of mass: 
+        CoM = q1.xyz[0:2] + np.multiply(np.subtract(q2.xyz[0:2],q1.xyz[0:2]), 0.5)
+
+        CoM_x = np.concatenate([CoM_x,[CoM[0]]])
+        CoM_y = np.concatenate([CoM_y,[CoM[1]]])
+
+        CoM_d_vel = gvf.getDesiredVelocity(CoM)
+
+        q1.set_v_2D_alt_lya(CoM_d_vel, q2.xyz[2])
+        q2.set_v_2D_alt_lya(CoM_d_vel, q1.xyz[2])
+
+
+        # dvelQ1 = gvf.getDesiredVelocity(q1.xyz)
+        # dvelQ2 = gvf.getDesiredVelocity(q2.xyz)
+        # q1.set_v_2D_alt_lya(dvelQ1, q2.xyz[2])
+        # q2.set_v_2D_alt_lya(dvelQ2, q1.xyz[2])
 
         # try to let them both follow a guidance vector field
 
@@ -140,13 +181,32 @@ for t in time:
         axis3d.cla()
         ani.draw3d(axis3d, q1.xyz, q1.Rot_bn(), quadcolor[0])
         ani.draw3d(axis3d, q2.xyz, q2.Rot_bn(), quadcolor[1])
-        axis3d.set_xlim(-10, 10)
-        axis3d.set_ylim(-10, 10)
+        axis3d.set_xlim(-BOUNDARY, BOUNDARY)
+        axis3d.set_ylim(-BOUNDARY, BOUNDARY)
         axis3d.set_zlim(0, 15)
         axis3d.set_xlabel('South [m]')
         axis3d.set_ylabel('East [m]')
         axis3d.set_zlabel('Up [m]')
         axis3d.set_title("Time %.3f s" %t)
+
+
+        axis2d.cla()
+        axis2d.add_patch(e1)
+        if t >= 45:
+            axis2d = arrows
+        axis2d.plot(q1.xyz[0], q1.xyz[1], 'bo')
+        axis2d.plot(q2.xyz[0], q2.xyz[1], 'bo')
+        axis2d.plot(CoM_x, CoM_y, 'bo', color="orange")
+        #axis2d.plot(ellips_x, ellips_y, 'bo', color="green")
+        axis2d.set_xlabel('x')
+        axis2d.set_ylabel('y')
+        axis2d.set_xlim(-BOUNDARY, BOUNDARY)
+        axis2d.set_ylim(-BOUNDARY, BOUNDARY)
+        axis2d.axis('equal')
+
+
+        
+
         pl.pause(0.001)
         pl.draw()
         
