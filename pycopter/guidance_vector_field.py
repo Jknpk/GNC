@@ -35,11 +35,11 @@ class GuidanceVectorFieldEllipse:
         boundary = 0.20
 
         if abs(totalError) < boundary:
-            error = 0
+            error = 0.
         elif totalError >= boundary: # outside ellipse
-            error = 1
+            error = 1.
         else:   # inside
-            error = -1
+            error = -1.
 
         #print("error", error)
 
