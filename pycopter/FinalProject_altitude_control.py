@@ -10,6 +10,8 @@ import animation as ani
 
 from guidance_vector_field import GuidanceVectorFieldEllipse
 
+from kalmanRelativeLocalization import kalman
+
 # Quadrotor number 1
 m = 1 # Kg
 l = 1 # m
@@ -62,13 +64,13 @@ quadcolor = ['k','b'] #Array for number of quads
 pl.close("all")
 pl.ion()
 fig = pl.figure(0)
-axis3d = fig.add_subplot(131, projection='3d')
-axis2d = fig.add_subplot(132)
-axis_gfv = fig.add_subplot(133)
+axis3d = fig.add_subplot(121, projection='3d')
+axis2d = fig.add_subplot(122)
+#axis_gfv = fig.add_subplot(133)
 pl.figure(0)
 
 # Desired position and heading
-xyz_d_q1 = np.array([5, 3, -10])
+xyz_d_q1 = np.array([5, 3, -6])
 xyz_d_q2 = np.array([0, 0, -6])
 
 
@@ -94,10 +96,10 @@ fc = form.formation_distance(2, 1, dtriang, mu, tilde_mu, Btriang, 5e-2, 5e-1)
 # Guidance vector field
 BOUNDARY = 50
 
-gvf = GuidanceVectorFieldEllipse(15,10,0,0,0.55) 
-axis_gfv = gvf.plotIt(axis_gfv, BOUNDARY)
+gvf = GuidanceVectorFieldEllipse(15,12,5,5,0.55) 
+#axis_gfv = gvf.plotIt(axis_gfv, BOUNDARY)
 
-# Ellipse
+# Ellipse with the same size as in the gvf
 e1 = pa.Ellipse((gvf.x0, gvf.y0), gvf.a*2., gvf.b*2., linewidth=1, fill=False)
 
 
@@ -108,6 +110,12 @@ CoM_y = np.array([])
 ellips_x = np.array([]) 
 ellips_y = np.array([])
 
+
+kalmanEstimation = None 
+mes_d = None
+kalmanError = None
+kalmanErrorx = None
+kalmanErrory = None
 
 
 
@@ -123,24 +131,77 @@ for x in x1:
 arrows = gvf.plotIt(axis2d, BOUNDARY)
 
 for t in time:
+    # 4 steps
+    # 1-altitude controle
+    # 2-relative localization
+    # 3-relative position controle
+    # 4-path tracking
 
     # Simulation
 
-    if t < 45:
+    if t < 30: # 45
+        # initial start position
         q1.set_xyz_ned_lya(xyz_d_q1)
         q2.set_xyz_ned_lya(xyz_d_q2)
 
-    elif t >= 45 and t < 46:
-        X = np.append(q1.xyz[0:2], q2.xyz[0:2])
-        V = np.append(q1.v_ned[0:2], q2.v_ned[0:2])
-        U = fc.u_acc(X, V)
+    elif t < 45:
+        # altitude control
+        q1.set_v_2D_alt_lya(np.array([0., 0.]), q2.xyz[2])
+        q2.set_v_2D_alt_lya(np.array([0., 0.]), q1.xyz[2])
+
+    elif t >= 45:
+        #relative localization
+
+        # first drone stays in place
+        # second drone orbits close to first drone 
+        #   first drone takes measurements and updates kalman filter 
+        
+        v = np.array([3.*np.sin(t/2.), 3.*np.cos(t/2.)]) 
+        q1.set_v_2D_alt_lya(np.array([0., 0.]), q2.xyz[2])
+        q2.set_v_2D_alt_lya(v, q1.xyz[2])
+
+        
+
+        # simulate measurements :) 
+            # distance measurements (which rate?)
+            # relative position measurements 
+        # --> give those as input to the Kalman filter. 
+        # where is the kalman filter running? seperate class!
 
 
-        q1.set_a_2D_alt_lya(U[0:2], q2.xyz[2])
-        q2.set_a_2D_alt_lya(U[2:4], q1.xyz[2])
+        mes_rel_vel = np.subtract(q1.v_ned, q2.v_ned)
+        
+        if kalmanEstimation is None:
+            kalmanEstimation = kalman(dt, q1.xyz[:2])
+        kalmanEstimation.performPredictionStep(mes_rel_vel)
+
+        if it%frames == 0: # in hz? 
+            mes_d = la.norm(np.subtract(q1.xyz, q2.xyz))
+            kalmanEstimation.performCorrectionStep(mes_d + np.random.normal(0., 1., 1))
+
+        kalmanEstimatedQ2XY = q1.xyz[:2] + (-1. * kalmanEstimation.X_hat)
+
+        kalmanError = la.norm(q1.xyz[:2]-kalmanEstimatedQ2XY) - la.norm(q1.xyz[:2] - q2.xyz[:2])
+        #kalmanErrorx = kalmanEstimatedQ2XY[0] - q1.xyz[1:] - q2.xyz[1:]
+
+
+        pass
+
+    #elif t >= 45 and t < 46:
+        #pass
+        # formation stuff that we don't need
+        #X = np.append(q1.xyz[0:2], q2.xyz[0:2])
+        #V = np.append(q1.v_ned[0:2], q2.v_ned[0:2])
+        #U = fc.u_acc(X, V)
+
+
+        #q1.set_a_2D_alt_lya(U[0:2], q2.xyz[2])
+        #q2.set_a_2D_alt_lya(U[2:4], q1.xyz[2])
 
     else:
+        pass
         #calculate center of mass: 
+        # add half of the vector that defines the distance of the 2 drones to the first drone 
         CoM = q1.xyz[0:2] + np.multiply(np.subtract(q2.xyz[0:2],q1.xyz[0:2]), 0.5)
 
         CoM_x = np.concatenate([CoM_x,[CoM[0]]])
@@ -148,6 +209,9 @@ for t in time:
 
         CoM_d_vel = gvf.getDesiredVelocity(CoM)
 
+        # simply add the calculated velocity to both aircrafts:
+        # If both aircrafts are flying with the same speed, it should result into the 
+        # center of mass tracking the desired circumference of the ellipse 
         q1.set_v_2D_alt_lya(CoM_d_vel, q2.xyz[2])
         q2.set_v_2D_alt_lya(CoM_d_vel, q1.xyz[2])
 
@@ -219,6 +283,16 @@ for t in time:
     q1_log.xi_g_h[it] = q1.xi_g
     q1_log.xi_CD_h[it] = q1.xi_CD
 
+    if mes_d is not None:
+        q1_log.dis_mes[it] = mes_d
+    else: 
+        q1_log.dis_mes[it] = 0
+
+    if kalmanError is not None:
+        q1_log.kalmanError[it] = kalmanError
+    else:
+        q1_log.kalmanError[it] = 0
+
     q2_log.xyz_h[it, :] = q2.xyz
     q2_log.att_h[it, :] = q2.att
     q2_log.w_h[it, :] = q2.w
@@ -275,6 +349,22 @@ pl.plot(time, q1_log.xi_g_h, label="${\\xi}_g$")
 pl.plot(time, q1_log.xi_CD_h, label="${\\xi}_{CD}$")
 pl.xlabel("Time [s]")
 pl.ylabel("Estimators value")
+pl.grid()
+pl.legend()
+
+
+pl.figure(6)
+pl.plot(time, q1_log.dis_mes)
+pl.xlabel("Time [s]")
+pl.ylabel("distance to drone 2")
+pl.grid()
+pl.legend()
+
+
+pl.figure(7)
+pl.plot(time, q1_log.kalmanError)
+pl.xlabel("Time [s]")
+pl.ylabel("kalman error")
 pl.grid()
 pl.legend()
 

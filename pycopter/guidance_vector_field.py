@@ -32,7 +32,7 @@ class GuidanceVectorFieldEllipse:
         return totalError
 
     def createSingleVectorFieldVector(self, tangent, normal, totalError):
-        boundary = 0.20
+        boundary = 0.05 #0.20
 
         if abs(totalError) < boundary:
             error = 0.
