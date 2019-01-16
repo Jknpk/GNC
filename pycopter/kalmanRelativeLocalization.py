@@ -17,7 +17,7 @@ class kalman:
         self.P = np.array([[5., 0.],[0., 5.]])
 
         # Standard deviations for the measurements (we consider them constant for the whole simulation)
-        self.sigma_d = 1.00 # distance measurement standard deviation
+        self.sigma_d = 0.2 # distance measurement standard deviation
         self.sigma_rel_vel = np.array([0.001,0.001]) # relative velocity uncertenty in each direction (xyz)
 
         # Data log
@@ -69,25 +69,25 @@ class kalman:
         #print(dis_mes, "Distance measure")
         #print(la.norm(self.X_hat))
 
-        print("Jet jet et los")
-        print("H:", H)
-        print("R:", R)
-        print("K: ", K)
-        print("Stuff1", self.P.dot(H.transpose()))
-        print("Stuff2: ", (1./(H.dot(self.P.dot(H.transpose())) + R)) )
-        print("P:", self.P)
+        #print("Jet jet et los")
+        #print("H:", H)
+        #print("R:", R)
+        #print("K: ", K)
+        #print("Stuff1", self.P.dot(H.transpose()))
+        #print("Stuff2: ", (1./(H.dot(self.P.dot(H.transpose())) + R)) )
+        #print("P:", self.P)
 
         
 
-        print(self.X_hat, "before")
+        #print(self.X_hat, "before")
         
 
         self.X_hat = self.X_hat + K * (dis_mes - la.norm(self.X_hat))
 
-        print(self.X_hat, "after")
-        print(self.P, " P before")
+        #print(self.X_hat, "after")
+        #print(self.P, " P before")
         self.P = self.P - np.outer(K, H.dot(self.P))
-        print(self.P, " P after")
+        #print(self.P, " P after")
         #H = # Eq. (4)
         #R = 
         #K = # Eq. (5)

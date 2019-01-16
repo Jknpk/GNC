@@ -49,7 +49,7 @@ q2 = quad.quadrotor(2, m, l, J, CDl, CDr, kt, km, kw, \
 
 
 # Simulation parameters
-tf = 200
+tf = 400
 dt = 1e-2
 time = np.linspace(0, tf, tf/dt)
 it = 0
@@ -118,6 +118,9 @@ kalmanErrorx = None
 kalmanErrory = None
 
 
+ZStar = np.array([5., 0])
+
+
 
 N = 400
 x1 = np.linspace(-BOUNDARY, BOUNDARY, N, endpoint=True)
@@ -149,7 +152,7 @@ for t in time:
         q1.set_v_2D_alt_lya(np.array([0., 0.]), q2.xyz[2])
         q2.set_v_2D_alt_lya(np.array([0., 0.]), q1.xyz[2])
 
-    elif t >= 45:
+    elif t < 100:
         #relative localization
 
         # first drone stays in place
@@ -179,10 +182,57 @@ for t in time:
             mes_d = la.norm(np.subtract(q1.xyz, q2.xyz))
             kalmanEstimation.performCorrectionStep(mes_d + np.random.normal(0., 1., 1))
 
-        kalmanEstimatedQ2XY = q1.xyz[:2] + (-1. * kalmanEstimation.X_hat)
+        kalmanError = la.norm(kalmanEstimation.X_hat - np.subtract(q1.xyz[:2], q2.xyz[:2]))
 
-        kalmanError = la.norm(q1.xyz[:2]-kalmanEstimatedQ2XY) - la.norm(q1.xyz[:2] - q2.xyz[:2])
-        #kalmanErrorx = kalmanEstimatedQ2XY[0] - q1.xyz[1:] - q2.xyz[1:]
+    
+
+
+        #kalmanEstimatedQ2XY = q1.xyz[:2] + (-1. * kalmanEstimation.X_hat)
+        #kalmanError = la.norm(q1.xyz[:2]-kalmanEstimatedQ2XY) - la.norm(q1.xyz[:2] - q2.xyz[:2])
+        
+        #when error small enough --> step 3 relative position control
+
+    elif t > 100:
+        #still altitude control
+
+        k = 0.05 # scaling how fast they should attract each other
+
+        v1 = k * -1 * (kalmanEstimation.X_hat - ZStar)
+        v2 = k * (kalmanEstimation.X_hat - ZStar)
+
+        if t > 140:
+            CoM = q1.xyz[0:2] + np.multiply(kalmanEstimation.X_hat, -0.5)
+
+            CoM_x = np.concatenate([CoM_x,[CoM[0]]])
+            CoM_y = np.concatenate([CoM_y,[CoM[1]]])
+
+            CoM_d_vel = gvf.getDesiredVelocity(CoM)
+
+            # simply add the calculated velocity to both aircrafts:
+            # If both aircrafts are flying with the same speed, it should result into the 
+            # center of mass tracking the desired circumference of the ellipse 
+            q1.set_v_2D_alt_lya(CoM_d_vel + v1, q2.xyz[2])
+            q2.set_v_2D_alt_lya(CoM_d_vel + v2, q1.xyz[2])
+
+        else:
+            q1.set_v_2D_alt_lya(v1, q2.xyz[2])
+            q2.set_v_2D_alt_lya(v2, q1.xyz[2])
+
+
+        mes_rel_vel = np.subtract(q1.v_ned, q2.v_ned)
+    
+        kalmanEstimation.performPredictionStep(mes_rel_vel)
+
+        if it%frames == 0: # in hz? 
+            mes_d = la.norm(np.subtract(q1.xyz, q2.xyz))
+            kalmanEstimation.performCorrectionStep(mes_d + np.random.normal(0., 0.2, 1))
+
+        kalmanError = la.norm(kalmanEstimation.X_hat - np.subtract(q1.xyz[:2], q2.xyz[:2]))
+
+
+
+
+
 
 
         pass
