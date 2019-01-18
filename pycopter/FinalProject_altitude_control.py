@@ -71,13 +71,12 @@ pl.figure(0)
 
 # Desired position and heading
 xyz_d_q1 = np.array([5, 3, -6])
-xyz_d_q2 = np.array([0, 0, -6])
+xyz_d_q2 = np.array([0, 0, -12])
 
 
 q1.yaw_d = -np.pi/4
 q2.yaw_d = np.pi/4
 
-#### not sure from here:
 
 # Formation Control
 # Shape
@@ -94,9 +93,9 @@ fc = form.formation_distance(2, 1, dtriang, mu, tilde_mu, Btriang, 5e-2, 5e-1)
 
 
 # Guidance vector field
-BOUNDARY = 50
+BOUNDARY = 20
 
-gvf = GuidanceVectorFieldEllipse(15,12,5,5,0.55) 
+gvf = GuidanceVectorFieldEllipse(15,12,0,0,3.2) # k = 3.2 for normalized vector
 #axis_gfv = gvf.plotIt(axis_gfv, BOUNDARY)
 
 # Ellipse with the same size as in the gvf
@@ -112,13 +111,17 @@ ellips_y = np.array([])
 
 
 kalmanEstimation = None 
-mes_d = None
+zTrue = None
 kalmanError = None
 kalmanErrorx = None
 kalmanErrory = None
 
+rpcErrorKalman = None
+rpcErrorTotal = None
+ellipseTrackingError = None
+altitudeError = None
 
-ZStar = np.array([5., 0])
+ZStar = np.array([5., 0.])
 
 
 
@@ -142,6 +145,11 @@ for t in time:
 
     # Simulation
 
+    v1_alt = q2.xyz[2]
+    v2_alt = q1.xyz[2] 
+
+    altitudeError =  la.norm(v1_alt - v2_alt)
+
     if t < 30: # 45
         # initial start position
         q1.set_xyz_ned_lya(xyz_d_q1)
@@ -149,8 +157,14 @@ for t in time:
 
     elif t < 45:
         # altitude control
-        q1.set_v_2D_alt_lya(np.array([0., 0.]), q2.xyz[2])
-        q2.set_v_2D_alt_lya(np.array([0., 0.]), q1.xyz[2])
+
+
+        print("altitudes:", v1_alt, v2_alt)
+        
+        q1.set_v_2D_alt_lya(np.array([0., 0.]), v1_alt)
+        q2.set_v_2D_alt_lya(np.array([0., 0.]), v2_alt)
+
+        
 
     elif t < 100:
         #relative localization
@@ -158,10 +172,11 @@ for t in time:
         # first drone stays in place
         # second drone orbits close to first drone 
         #   first drone takes measurements and updates kalman filter 
+
         
         v = np.array([3.*np.sin(t/2.), 3.*np.cos(t/2.)]) 
-        q1.set_v_2D_alt_lya(np.array([0., 0.]), q2.xyz[2])
-        q2.set_v_2D_alt_lya(v, q1.xyz[2])
+        q1.set_v_2D_alt_lya(np.array([0., 0.]), v1_alt)
+        q2.set_v_2D_alt_lya(v, v2_alt)
 
         
 
@@ -179,8 +194,11 @@ for t in time:
         kalmanEstimation.performPredictionStep(mes_rel_vel)
 
         if it%frames == 0: # in hz? 
-            mes_d = la.norm(np.subtract(q1.xyz, q2.xyz))
-            kalmanEstimation.performCorrectionStep(mes_d + np.random.normal(0., 1., 1))
+            zTrue = la.norm(np.subtract(q1.xyz, q2.xyz))
+            kalmanEstimation.performCorrectionStep(zTrue + np.random.normal(0., 1., 1))
+
+        rpcErrorKalman = la.norm(np.subtract(kalmanEstimation.X_hat, ZStar))
+        rpcErrorTotal = la.norm(np.subtract(np.subtract(q1.xyz, q2.xyz)[0:2], ZStar)) 
 
         kalmanError = la.norm(kalmanEstimation.X_hat - np.subtract(q1.xyz[:2], q2.xyz[:2]))
 
@@ -195,10 +213,12 @@ for t in time:
     elif t > 100:
         #still altitude control
 
-        k = 0.05 # scaling how fast they should attract each other
+        k = 0.15 # scaling how fast they should attract each other
 
         v1 = k * -1 * (kalmanEstimation.X_hat - ZStar)
         v2 = k * (kalmanEstimation.X_hat - ZStar)
+
+
 
         if t > 140:
             CoM = q1.xyz[0:2] + np.multiply(kalmanEstimation.X_hat, -0.5)
@@ -206,17 +226,19 @@ for t in time:
             CoM_x = np.concatenate([CoM_x,[CoM[0]]])
             CoM_y = np.concatenate([CoM_y,[CoM[1]]])
 
-            CoM_d_vel = gvf.getDesiredVelocity(CoM)
+            CoM_d_vel = gvf.getDesiredVelocity(np.multiply(CoM,1.))
 
             # simply add the calculated velocity to both aircrafts:
             # If both aircrafts are flying with the same speed, it should result into the 
             # center of mass tracking the desired circumference of the ellipse 
-            q1.set_v_2D_alt_lya(CoM_d_vel + v1, q2.xyz[2])
-            q2.set_v_2D_alt_lya(CoM_d_vel + v2, q1.xyz[2])
+            q1.set_v_2D_alt_lya(CoM_d_vel + v1, v1_alt)
+            q2.set_v_2D_alt_lya(CoM_d_vel + v2, v2_alt)
+
+            ellipseTrackingError = gvf.computeError(CoM)
 
         else:
-            q1.set_v_2D_alt_lya(v1, q2.xyz[2])
-            q2.set_v_2D_alt_lya(v2, q1.xyz[2])
+            q1.set_v_2D_alt_lya(v1, v1_alt)
+            q2.set_v_2D_alt_lya(v2, v2_alt)
 
 
         mes_rel_vel = np.subtract(q1.v_ned, q2.v_ned)
@@ -224,8 +246,12 @@ for t in time:
         kalmanEstimation.performPredictionStep(mes_rel_vel)
 
         if it%frames == 0: # in hz? 
-            mes_d = la.norm(np.subtract(q1.xyz, q2.xyz))
-            kalmanEstimation.performCorrectionStep(mes_d + np.random.normal(0., 0.2, 1))
+            zTrue = la.norm(np.subtract(q1.xyz, q2.xyz))
+            kalmanEstimation.performCorrectionStep(zTrue + np.random.normal(0., 0.2, 1))
+
+
+        rpcErrorKalman = la.norm(np.subtract(kalmanEstimation.X_hat, ZStar))
+        rpcErrorTotal = la.norm(np.subtract(np.subtract(q1.xyz, q2.xyz)[0:2], ZStar))
 
         kalmanError = la.norm(kalmanEstimation.X_hat - np.subtract(q1.xyz[:2], q2.xyz[:2]))
 
@@ -333,15 +359,37 @@ for t in time:
     q1_log.xi_g_h[it] = q1.xi_g
     q1_log.xi_CD_h[it] = q1.xi_CD
 
-    if mes_d is not None:
-        q1_log.dis_mes[it] = mes_d
+    if zTrue is not None:
+        q1_log.zTrue[it] = zTrue
     else: 
-        q1_log.dis_mes[it] = 0
+        q1_log.zTrue[it] = 0
 
     if kalmanError is not None:
         q1_log.kalmanError[it] = kalmanError
     else:
         q1_log.kalmanError[it] = 0
+
+
+    if rpcErrorKalman is not None:
+        q1_log.rpcErrorKalman[it] = rpcErrorKalman
+    else:
+        q1_log.rpcErrorKalman[it] = 0
+
+    if rpcErrorTotal is not None:
+        q1_log.rpcErrorTotal[it] = rpcErrorTotal
+    else:
+        q1_log.rpcErrorTotal[it] = 0
+
+    if ellipseTrackingError is not None:
+        q1_log.ellipseTrackingError[it] = ellipseTrackingError
+    else:
+        q1_log.ellipseTrackingError[it] = 0
+
+    if altitudeError is not None:
+        q1_log.altitudeError[it] = altitudeError
+    else:
+        q1_log.altitudeError[it] = 0
+
 
     q2_log.xyz_h[it, :] = q2.xyz
     q2_log.att_h[it, :] = q2.att
@@ -403,10 +451,17 @@ pl.grid()
 pl.legend()
 
 
+#pl.figure(6)
+#pl.plot(time, q1_log.zTrue)
+#pl.xlabel("Time [s]")
+#pl.ylabel("true distance to drone 2")
+#pl.grid()
+#pl.legend()
+
 pl.figure(6)
-pl.plot(time, q1_log.dis_mes)
+pl.plot(time, q1_log.altitudeError)
 pl.xlabel("Time [s]")
-pl.ylabel("distance to drone 2")
+pl.ylabel("eAC = ||p1z - p2z||\nAltitude Controller error")
 pl.grid()
 pl.legend()
 
@@ -414,7 +469,29 @@ pl.legend()
 pl.figure(7)
 pl.plot(time, q1_log.kalmanError)
 pl.xlabel("Time [s]")
-pl.ylabel("kalman error")
+pl.ylabel("eKF = ||zhat - (p1-p2)||\nKalman Filter zhat estimation error")
+pl.grid()
+pl.legend()
+
+pl.figure(8)
+pl.plot(time, q1_log.rpcErrorKalman)
+pl.xlabel("Time [s]")
+pl.ylabel("eRPC = ||zhat - zstar||\n Relative Position Control error Kalman")
+pl.grid()
+pl.legend()
+
+
+pl.figure(9)
+pl.plot(time, q1_log.rpcErrorTotal)
+pl.xlabel("Time [s]")
+pl.ylabel("eRPC = ||ztrue - zstar||\n Relative Position Control error total")
+pl.grid()
+pl.legend()
+
+pl.figure(10)
+pl.plot(time, q1_log.ellipseTrackingError)
+pl.xlabel("Time [s]")
+pl.ylabel("eET = phi(CoM) \n Ellipse tracking error of Kalman estimated CoM")
 pl.grid()
 pl.legend()
 

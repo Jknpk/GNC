@@ -10,8 +10,15 @@ class quadlog:
         self.w_h = np.zeros((time.size, 4))
         self.xi_g_h = np.zeros(time.size)
         self.xi_CD_h = np.zeros(time.size)
+
+        self.altitudeError = np.zeros(time.size)
         
-        self.dis_mes = np.zeros(time.size)
+        self.zTrue = np.zeros(time.size)
+        self.rpcErrorTotal = np.zeros(time.size)
+        self.rpcErrorKalman = np.zeros(time.size)
+        
+        self.ellipseTrackingError = np.zeros(time.size)
+
         self.kalmanError = np.zeros(time.size)
         self.kalmanErrorx = np.zeros(time.size)
         self.kalmanErrory = np.zeros(time.size) 

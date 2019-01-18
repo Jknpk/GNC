@@ -16,7 +16,7 @@ class GuidanceVectorFieldEllipse:
         # f(p) = ((x-pos_xy[0])/self.a)**2 + ((y-pos_xy)/self.b)**2 - 1
 
         #normal = np.array([2.* (pos_xy[0] - self.x0)/self.a**2, 2.* (pos_xy[1] - self.y0)/self.b**2]) 
-        normal = np.array([2.* (pos_xy[0] - self.x0)/self.a**2, 2.* (pos_xy[1] - self.y0)/self.b**2])
+        normal = np.array([2.* ((pos_xy[0] - self.x0)/(self.a**2)), 2.* ((pos_xy[1] - self.y0)/(self.b**2))])
 
         return normal
 
@@ -32,14 +32,14 @@ class GuidanceVectorFieldEllipse:
         return totalError
 
     def createSingleVectorFieldVector(self, tangent, normal, totalError):
-        boundary = 0.05 #0.20
+        boundary = 0.0001 #0.20
 
         if abs(totalError) < boundary:
             error = 0.
         elif totalError >= boundary: # outside ellipse
-            error = 1.
+            error = totalError#1.
         else:   # inside
-            error = -1.
+            error = totalError#-1.
 
         #print("error", error)
 
